@@ -38,6 +38,7 @@ import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -450,11 +451,6 @@ public class TestHelpers {
     }
 
     @Override
-    public int getInt() {
-      return node.asInt();
-    }
-
-    @Override
     public long getLong() {
       return node.asLong();
     }
@@ -489,7 +485,7 @@ public class TestHelpers {
     }
 
     @Override
-    public String toJson() {
+    public String toJson(ZoneId zoneId) {
       return node.toString();
     }
 

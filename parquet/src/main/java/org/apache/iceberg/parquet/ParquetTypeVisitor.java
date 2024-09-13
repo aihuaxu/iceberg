@@ -54,6 +54,14 @@ public class ParquetTypeVisitor<T> {
         }
       }
 
+      // TODO Add Variant logical type to Parquet
+      if (
+      /*variant*/ annotation == null
+          && group.getType("Value") != null
+          && group.getType("Metadata") != null) {
+        return visitor.variant(group);
+      }
+
       return visitor.struct(group, visitFields(group, visitor));
     }
   }
@@ -201,6 +209,10 @@ public class ParquetTypeVisitor<T> {
   }
 
   public T map(GroupType map, T key, T value) {
+    return null;
+  }
+
+  public T variant(GroupType variant) {
     return null;
   }
 

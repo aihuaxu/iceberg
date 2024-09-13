@@ -27,10 +27,12 @@ import static org.apache.iceberg.parquet.ParquetWritingTestUtils.createTempFile;
 import static org.apache.iceberg.parquet.ParquetWritingTestUtils.write;
 import static org.apache.iceberg.relocated.com.google.common.collect.Iterables.getOnlyElement;
 import static org.apache.iceberg.types.Types.NestedField.optional;
+import static org.apache.iceberg.types.Types.NestedField.required;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -49,6 +51,7 @@ import org.apache.iceberg.relocated.com.google.common.base.Strings;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.types.Types.IntegerType;
 import org.apache.iceberg.util.Pair;
@@ -217,6 +220,54 @@ public class TestParquet {
 
     assertThat(recordRead.get("arraybytes")).isEqualTo(expectedByteList);
     assertThat(recordRead.get("topbytes")).isEqualTo(expectedBinary);
+  }
+
+  @Test
+  public void testVariant() throws IOException {
+    Schema schema = new Schema(required(1, "variantCol", Types.VariantType.get()));
+
+    Object[][] testData = {
+      {null, null},
+      {Types.BooleanType.get(), true},
+      {Types.BooleanType.get(), false},
+      {Types.IntegerType.get(), 10},
+      {Types.LongType.get(), 100L},
+      {Types.FloatType.get(), 200.12f},
+      {Types.DoubleType.get(), 300.34},
+      {Types.StringType.get(), "abc"},
+      {Types.BinaryType.get(), new byte[] {1, 2, 3}},
+      {Types.FixedType.ofLength(2), new byte[] {1, 2}},
+      {Types.DecimalType.of(5, 2), BigDecimal.valueOf(123.56)},
+      {Types.TimestampType.withZone(), 6L},
+      {Types.TimestampType.withoutZone(), 6L},
+    };
+
+    File file = createTempFile(temp);
+    List<GenericData.Record> records = Lists.newArrayListWithCapacity(testData.length + 1);
+    org.apache.avro.Schema avroSchema = AvroSchemaUtil.convert(schema.asStruct());
+
+    // Add Json Variant
+    GenericData.Record record = new GenericData.Record(avroSchema);
+    record.put("variantCol", ParquetVariant.parseJson("{\"name\":\"John\",\"age\":30}"));
+    records.add(record);
+
+    // Add primitive Variant
+    for (Object[] pair : testData) {
+      record = new GenericData.Record(avroSchema);
+      record.put("variantCol", ParquetVariant.toVariant((Type.PrimitiveType) pair[0], pair[1]));
+      records.add(record);
+    }
+
+    long actualSize =
+        write(
+            file,
+            schema,
+            Collections.emptyMap(),
+            ParquetAvroWriter::buildWriter,
+            records.toArray(new GenericData.Record[] {}));
+
+    long expectedSize = ParquetIO.file(localInput(file)).getLength();
+    assertThat(actualSize).isEqualTo(expectedSize);
   }
 
   private Pair<File, Long> generateFile(
