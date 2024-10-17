@@ -19,6 +19,7 @@
 package org.apache.iceberg;
 
 import java.math.BigDecimal;
+import java.time.ZoneId;
 
 /**
  * Interface for accessing Variant fields.
@@ -34,8 +35,6 @@ public interface VariantLike {
 
   boolean getBoolean();
 
-  int getInt();
-
   long getLong();
 
   float getFloat();
@@ -48,5 +47,5 @@ public interface VariantLike {
 
   byte[] getBinary();
 
-  String toJson();
+  String toJson(ZoneId zoneId);
 }
