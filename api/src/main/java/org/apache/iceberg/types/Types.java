@@ -429,6 +429,11 @@ public class Types {
     public String toString() {
       return "variant";
     }
+
+    @Override
+    public boolean isVariantType() {
+      return true;
+    }
   }
 
   public static class DecimalType extends PrimitiveType {

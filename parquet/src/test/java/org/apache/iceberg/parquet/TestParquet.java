@@ -30,11 +30,13 @@ import static org.apache.iceberg.types.Types.NestedField.optional;
 import static org.apache.iceberg.types.Types.NestedField.required;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.google.gson.JsonParser;
 import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.time.ZoneId;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
@@ -227,6 +229,7 @@ public class TestParquet {
     Schema schema = new Schema(required(1, "variantCol", Types.VariantType.get()));
 
     Object[][] testData = {
+      {null, "{\"name\":\"John\",\"age\":30}"},
       {null, null},
       {Types.BooleanType.get(), true},
       {Types.BooleanType.get(), false},
@@ -235,8 +238,8 @@ public class TestParquet {
       {Types.FloatType.get(), 200.12f},
       {Types.DoubleType.get(), 300.34},
       {Types.StringType.get(), "abc"},
-      {Types.BinaryType.get(), new byte[] {1, 2, 3}},
-      {Types.FixedType.ofLength(2), new byte[] {1, 2}},
+      {Types.BinaryType.get(), new byte[] {'a', 'b', 'c'}},
+      {Types.FixedType.ofLength(3), new byte[] {'a', 'b', 'c'}},
       {Types.DecimalType.of(5, 2), BigDecimal.valueOf(123.56)},
       {Types.TimestampType.withZone(), 6L},
       {Types.TimestampType.withoutZone(), 6L},
@@ -248,11 +251,12 @@ public class TestParquet {
 
     // Add Json Variant
     GenericData.Record record = new GenericData.Record(avroSchema);
-    record.put("variantCol", ParquetVariant.parseJson("{\"name\":\"John\",\"age\":30}"));
+    record.put("variantCol", ParquetVariant.parseJson((String) testData[0][1]));
     records.add(record);
 
     // Add primitive Variant
-    for (Object[] pair : testData) {
+    for (int i = 1; i < testData.length; i++) {
+      Object[] pair = testData[i];
       record = new GenericData.Record(avroSchema);
       record.put("variantCol", ParquetVariant.toVariant((Type.PrimitiveType) pair[0], pair[1]));
       records.add(record);
@@ -268,6 +272,28 @@ public class TestParquet {
 
     long expectedSize = ParquetIO.file(localInput(file)).getLength();
     assertThat(actualSize).isEqualTo(expectedSize);
+
+    // Test read the variant data
+    Iterable<GenericData.Record> readRecords =
+        Parquet.read(Files.localInput(file)).project(schema).callInit().build();
+    int count = 0;
+    for (GenericData.Record readRecord : readRecords) {
+      GenericData.Record variantRecord = (GenericData.Record) readRecord.get("variantCol");
+      ParquetVariant readVariant =
+          ParquetVariant.of(
+              (ByteBuffer) variantRecord.get("Value"), (ByteBuffer) variantRecord.get("Metadata"));
+      if (count == 0) {
+        assertThat(new JsonParser().parse(readVariant.toJson(ZoneId.of("UTC"))))
+            .isEqualTo((new JsonParser().parse((String) testData[0][1])));
+      } else {
+        assertThat(readVariant.toJson(ZoneId.of("UTC")))
+            .isEqualTo(
+                ParquetVariant.toVariant(
+                        (Type.PrimitiveType) testData[count][0], testData[count][1])
+                    .toJson(ZoneId.of("UTC")));
+      }
+      ++count;
+    }
   }
 
   private Pair<File, Long> generateFile(

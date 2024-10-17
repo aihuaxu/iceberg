@@ -56,6 +56,10 @@ class BuildAvroProjection extends AvroCustomOrderSchemaVisitor<Schema, Schema.Fi
   @Override
   @SuppressWarnings("checkstyle:CyclomaticComplexity")
   public Schema record(Schema record, List<String> names, Iterable<Schema.Field> schemaIterable) {
+    if (current.isVariantType()) {
+      return variant(record);
+    }
+
     Preconditions.checkArgument(
         current.isNestedType() && current.asNestedType().isStructType(),
         "Cannot project non-struct: %s",
@@ -126,6 +130,17 @@ class BuildAvroProjection extends AvroCustomOrderSchemaVisitor<Schema, Schema.Fi
     if (hasChange || renames.containsKey(record.getFullName())) {
       return AvroSchemaUtil.copyRecord(record, updatedFields, renames.get(record.getFullName()));
     }
+
+    return record;
+  }
+
+  public Schema variant(Schema record) {
+    Preconditions.checkArgument(
+        current.isVariantType()
+            && record.getField("Value") != null
+            && record.getField("Metadata") != null,
+        "Expect variant type with Value and Metadata fields: %s",
+        current);
 
     return record;
   }

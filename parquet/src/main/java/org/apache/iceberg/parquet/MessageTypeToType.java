@@ -146,6 +146,15 @@ class MessageTypeToType extends ParquetTypeVisitor<Type> {
   }
 
   @Override
+  public Type variant(GroupType variant) {
+    // return Types.VariantType.get();
+    return Types.StructType.of(
+        List.of(
+            required(-1, "Value", Types.BinaryType.get()),
+            required(-2, "Metadata", Types.BinaryType.get())));
+  }
+
+  @Override
   public Type primitive(PrimitiveType primitive) {
     // first, use the logical type annotation, if present
     LogicalTypeAnnotation logicalType = primitive.getLogicalTypeAnnotation();

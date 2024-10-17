@@ -20,6 +20,7 @@ package org.apache.iceberg.parquet;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
 import java.time.ZoneId;
 import org.apache.iceberg.VariantLike;
 import org.apache.iceberg.types.Type;
@@ -32,6 +33,10 @@ public class ParquetVariant implements VariantLike {
 
   public static ParquetVariant parseJson(String json) throws IOException {
     return new ParquetVariant(VariantBuilder.parseJson(json));
+  }
+
+  public static ParquetVariant of(ByteBuffer value, ByteBuffer metadata) {
+    return new ParquetVariant(new Variant(value.array(), metadata.array()));
   }
 
   public static ParquetVariant toVariant(Type.PrimitiveType type, Object value) {
