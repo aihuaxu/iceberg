@@ -35,6 +35,7 @@ import org.apache.spark.sql.types.MapType;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.types.VariantType;
 
 /**
  * Visitor for traversing a Parquet type with a companion Spark type.
@@ -52,7 +53,6 @@ public class ParquetWithSparkSchemaVisitor<T> {
       StructType struct = (StructType) sType;
       return visitor.message(
           struct, (MessageType) type, visitFields(struct, type.asGroupType(), visitor));
-
     } else if (type.isPrimitive()) {
       return visitor.primitive(sType, type.asPrimitiveType());
 
@@ -152,6 +152,30 @@ public class ParquetWithSparkSchemaVisitor<T> {
         } finally {
           visitor.fieldNames.pop();
         }
+      } else if (sType
+          instanceof VariantType /* LogicalTypeAnnotation.variantType().equals(annotation) */) {
+        //        Preconditions.checkArgument(
+        //            !group.isRepetition(Repetition.REPEATED),
+        //            "Invalid map: top-level group is repeated: %s",
+        //            group);
+        //        Preconditions.checkArgument(
+        //            group.getFieldCount() == 1,
+        //            "Invalid map: does not contain single repeated field: %s",
+        //            group);
+        //
+        //        GroupType repeatedKeyValue = group.getType(0).asGroupType();
+        //        Preconditions.checkArgument(
+        //            repeatedKeyValue.isRepetition(Repetition.REPEATED),
+        //            "Invalid map: inner group is not repeated");
+        //        Preconditions.checkArgument(
+        //            repeatedKeyValue.getFieldCount() <= 2,
+        //            "Invalid map: repeated group does not have 2 fields");
+        //
+        //        Preconditions.checkArgument(
+        //            sType instanceof VariantType, "Invalid variant: %s is not a variant", sType);
+        VariantType variant = (VariantType) sType;
+
+        return visitor.variant(variant, group);
       }
 
       Preconditions.checkArgument(
@@ -208,6 +232,11 @@ public class ParquetWithSparkSchemaVisitor<T> {
   }
 
   public T primitive(DataType sPrimitive, PrimitiveType primitive) {
+    return null;
+  }
+
+  public T variant(VariantType sVariant, GroupType variant) {
+    // TODO add Parquet VariantType as parameter?
     return null;
   }
 

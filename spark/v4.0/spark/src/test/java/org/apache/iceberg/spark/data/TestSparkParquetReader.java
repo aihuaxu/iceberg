@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.spark.data;
 
+import static org.apache.iceberg.TableProperties.FORMAT_VERSION;
 import static org.apache.iceberg.types.Types.NestedField.required;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -60,6 +61,7 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.assertj.core.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 public class TestSparkParquetReader extends AvroDataTest {
@@ -122,6 +124,11 @@ public class TestSparkParquetReader extends AvroDataTest {
     return true;
   }
 
+  @Override
+  protected boolean supportsVariant() {
+    return true;
+  }
+
   protected List<InternalRow> rowsFromFile(InputFile inputFile, Schema schema) throws IOException {
     try (CloseableIterable<InternalRow> reader =
         Parquet.read(inputFile)
@@ -132,13 +139,13 @@ public class TestSparkParquetReader extends AvroDataTest {
     }
   }
 
-  protected Table tableFromInputFile(InputFile inputFile, Schema schema) throws IOException {
+  protected Table tableFromInputFile(InputFile inputFile, Schema schema, int formatVersion) throws IOException {
     HadoopTables tables = new HadoopTables();
     Table table =
         tables.create(
             schema,
             PartitionSpec.unpartitioned(),
-            ImmutableMap.of(),
+            ImmutableMap.of(FORMAT_VERSION, String.valueOf(formatVersion)),
             java.nio.file.Files.createTempDirectory(temp, null).toFile().getCanonicalPath());
 
     table
@@ -189,7 +196,7 @@ public class TestSparkParquetReader extends AvroDataTest {
 
     // Now we try to import that file as an Iceberg table to make sure Iceberg can read
     // Int96 end to end.
-    Table int96Table = tableFromInputFile(parquetInputFile, schema);
+    Table int96Table = tableFromInputFile(parquetInputFile, schema, 2);
     List<Record> tableRecords = Lists.newArrayList(IcebergGenerics.read(int96Table).build());
 
     assertThat(tableRecords).hasSameSizeAs(rows);
@@ -247,5 +254,51 @@ public class TestSparkParquetReader extends AvroDataTest {
     assertThatThrownBy(() -> writeAndValidate(writeSchema, expectedSchema))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Missing required field: missing_str");
+  }
+
+  @Test
+  public void testVariant() throws IOException {
+    Assumptions.assumeThat(supportsVariant()).isTrue();
+
+    String outputFilePath = String.format("%s/%s", temp.toAbsolutePath(), "variant.parquet");
+    HadoopOutputFile outputFile =
+        HadoopOutputFile.fromPath(
+            new org.apache.hadoop.fs.Path(outputFilePath), new Configuration());
+    Schema schema = new Schema(required(1, "v", Types.VariantType.get()));
+    StructType sparkSchema =
+        new StructType(
+            new StructField[] {
+              new StructField("v", DataTypes.VariantType, true, Metadata.empty())
+            });
+    List<InternalRow> rows = Lists.newArrayList(RandomData.generateSpark(schema, 10, 0L));
+
+    try (ParquetWriter<InternalRow> writer =
+        new NativeSparkWriterBuilder(outputFile)
+            .set("org.apache.spark.sql.parquet.row.attributes", sparkSchema.json())
+            .set("spark.sql.parquet.writeLegacyFormat", "false")
+            .set("spark.sql.parquet.outputTimestampType", "INT96")
+            .set("spark.sql.parquet.fieldId.write.enabled", "true")
+            .build()) {
+      for (InternalRow row : rows) {
+        writer.write(row);
+      }
+    }
+
+    InputFile parquetInputFile = Files.localInput(outputFilePath);
+    List<InternalRow> readRows = rowsFromFile(parquetInputFile, schema);
+
+    assertThat(readRows).hasSameSizeAs(rows);
+    assertThat(readRows).isEqualTo(rows);
+
+    // Now we try to import that file as an Iceberg table to make sure Iceberg can read
+    // Variant end to end.
+    Table variantTable = tableFromInputFile(parquetInputFile, schema, 3);
+    List<Record> tableRecords = Lists.newArrayList(IcebergGenerics.read(variantTable).build());
+
+    assertThat(tableRecords).hasSameSizeAs(rows);
+
+    for (int i = 0; i < tableRecords.size(); i++) {
+      GenericsHelpers.assertEqualsUnsafe(schema.asStruct(), tableRecords.get(i), rows.get(i));
+    }
   }
 }

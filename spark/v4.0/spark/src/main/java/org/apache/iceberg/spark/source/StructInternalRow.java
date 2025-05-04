@@ -231,7 +231,8 @@ class StructInternalRow extends InternalRow {
 
   @Override
   public VariantVal getVariant(int ordinal) {
-    throw new UnsupportedOperationException("Unsupported method: getVariant");
+    // TODO
+    return isNullAt(ordinal) ? null : null;
   }
 
   private MapData getMapInternal(int ordinal) {

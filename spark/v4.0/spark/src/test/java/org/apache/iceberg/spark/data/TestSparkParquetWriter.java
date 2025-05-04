@@ -50,7 +50,8 @@ public class TestSparkParquetWriter {
   public static final Schema SCHEMA =
       new Schema(
           Types.NestedField.required(1, "id", Types.IntegerType.get()),
-          Types.NestedField.required(2, "id_long", Types.LongType.get()));
+          Types.NestedField.required(2, "id_long", Types.LongType.get()),
+          Types.NestedField.required(3, "v", Types.VariantType.get()));
 
   private static final Schema COMPLEX_SCHEMA =
       new Schema(

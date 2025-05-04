@@ -117,6 +117,33 @@ public class TestCreateTable extends CatalogTestBase {
   }
 
   @TestTemplate
+  public void testCreateTableWithVariant() {
+    assertThat(validationCatalog.tableExists(tableIdent))
+        .as("Table should not already exist")
+        .isFalse();
+
+    sql(
+        "CREATE TABLE %s (id BIGINT NOT NULL, data STRING, v VARIANT) USING iceberg TBLPROPERTIES('format-version'=3)",
+        tableName);
+
+    Table table = validationCatalog.loadTable(tableIdent);
+    assertThat(table).as("Should load the new table").isNotNull();
+
+    StructType expectedSchema =
+        StructType.of(
+            NestedField.required(1, "id", Types.LongType.get()),
+            NestedField.optional(2, "data", Types.StringType.get()),
+            NestedField.optional(3, "v", Types.VariantType.get()));
+    assertThat(table.schema().asStruct())
+        .as("Should have the expected schema")
+        .isEqualTo(expectedSchema);
+    assertThat(table.spec().fields()).as("Should not be partitioned").hasSize(0);
+    assertThat(table.properties().get(TableProperties.DEFAULT_FILE_FORMAT))
+        .as("Should not have the default format set")
+        .isNull();
+  }
+
+  @TestTemplate
   public void testCreateTablePartitionedByUUID() {
     assertThat(validationCatalog.tableExists(tableIdent)).isFalse();
     Schema schema = new Schema(1, Types.NestedField.optional(1, "uuid", Types.UUIDType.get()));

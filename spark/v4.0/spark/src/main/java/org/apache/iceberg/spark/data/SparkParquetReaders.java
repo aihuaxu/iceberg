@@ -21,6 +21,7 @@ package org.apache.iceberg.spark.data;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +37,9 @@ import org.apache.iceberg.parquet.ParquetValueReaders.RepeatedReader;
 import org.apache.iceberg.parquet.ParquetValueReaders.ReusableEntry;
 import org.apache.iceberg.parquet.ParquetValueReaders.StructReader;
 import org.apache.iceberg.parquet.ParquetValueReaders.UnboxedReader;
+import org.apache.iceberg.parquet.ParquetVariantVisitor;
 import org.apache.iceberg.parquet.TypeWithSchemaVisitor;
+import org.apache.iceberg.parquet.VariantReaderBuilder;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
@@ -45,6 +48,7 @@ import org.apache.iceberg.spark.SparkUtil;
 import org.apache.iceberg.types.Type.TypeID;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.UUIDUtil;
+import org.apache.iceberg.variants.Variant;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.io.api.Binary;
 import org.apache.parquet.schema.GroupType;
@@ -58,6 +62,7 @@ import org.apache.spark.sql.catalyst.util.ArrayBasedMapData;
 import org.apache.spark.sql.catalyst.util.ArrayData;
 import org.apache.spark.sql.catalyst.util.GenericArrayData;
 import org.apache.spark.sql.catalyst.util.MapData;
+import org.apache.spark.sql.execution.datasources.parquet.VariantReader;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.Decimal;
 import org.apache.spark.unsafe.types.CalendarInterval;
@@ -218,6 +223,38 @@ public class SparkParquetReaders {
           repeatedR,
           ParquetValueReaders.option(keyType, keyD, keyReader),
           ParquetValueReaders.option(valueType, valueD, valueReader));
+    }
+
+    @Override
+    public ParquetVariantVisitor<ParquetValueReader<?>> variantVisitor() {
+      return new VariantReaderBuilder(type, Arrays.asList(currentPath()));
+    }
+
+    @Override
+    public ParquetValueReader<?> variant(
+        Types.VariantType iVariant, GroupType variant, ParquetValueReader<?> variantReader) {
+      return new VariantValReader(variantReader);
+      //
+      //      return new SparkParquetReaders.VariantReader(
+      //          List.of(
+      //              new ParquetValueReaders.ByteArrayReader(
+      //                  new ColumnDescriptor(
+      //                      new String[] {variant.getName(), "value"},
+      //                      new PrimitiveType(
+      //                          Type.Repetition.REQUIRED,
+      //                          PrimitiveType.PrimitiveTypeName.BINARY,
+      //                          "value"),
+      //                      0,
+      //                      0)),
+      //              new ParquetValueReaders.ByteArrayReader(
+      //                  new ColumnDescriptor(
+      //                      new String[] {variant.getName(), "metadata"},
+      //                      new PrimitiveType(
+      //                          Type.Repetition.REQUIRED,
+      //                          PrimitiveType.PrimitiveTypeName.BINARY,
+      //                          "metadata"),
+      //                      0,
+      //                      0))));
     }
 
     @Override
@@ -496,6 +533,43 @@ public class SparkParquetReaders {
       return map;
     }
   }
+
+    private static class VariantValReader extends StructReader<VariantVal, GenericInternalRow> {
+
+    protected VariantValReader(ParquetValueReader<?> variantReader) {
+        super(List.of(variantReader));
+      }
+
+      @Override
+      protected GenericInternalRow newStructData(VariantVal reuse) {
+        return new GenericInternalRow(1);
+      }
+
+      @Override
+      protected Object getField(GenericInternalRow intermediate, int pos) {
+        return intermediate.genericGet(pos);
+      }
+
+      @Override
+      protected VariantVal buildStruct(GenericInternalRow struct) {
+        Variant v = (Variant) struct.genericGet(0);
+
+        byte[] metadataBytes = new byte[v.metadata().sizeInBytes()];
+        ByteBuffer metadataBuffer = ByteBuffer.wrap(metadataBytes).order(ByteOrder.LITTLE_ENDIAN);
+        v.metadata().writeTo(metadataBuffer, 0);
+
+        byte[] valueBytes = new byte[v.value().sizeInBytes()];
+        ByteBuffer valueBuffer = ByteBuffer.wrap(valueBytes).order(ByteOrder.LITTLE_ENDIAN);
+        v.value().writeTo(valueBuffer, 0);
+
+        return new VariantVal(valueBytes, metadataBytes);
+      }
+
+      @Override
+      protected void set(GenericInternalRow row, int pos, Object value) {
+        row.update(pos, value);
+      }
+    }
 
   private static class InternalRowReader extends StructReader<InternalRow, GenericInternalRow> {
     private final int numFields;
