@@ -116,7 +116,7 @@ public class TestPrefixedStorage {
   }
 
   @Test
-  public void gcsFileSystem() {
+  public void analyticsCoreFactory() {
     Map<String, String> properties =
         ImmutableMap.of(
             GCPProperties.GCS_PROJECT_ID, "myProject",
@@ -144,7 +144,8 @@ public class TestPrefixedStorage {
                     .build())
             .build();
 
-    GcsFileSystem fileSystem = storage.gcsFileSystem();
+    GcsAnalyticsCoreFactory factory = storage.analyticsCoreFactory();
+    GcsFileSystem fileSystem = factory.gcsFileSystem();
 
     assertThat(fileSystem).isNotNull();
     assertThat(fileSystem.getGcsClient()).isNotNull();
